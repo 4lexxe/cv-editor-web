@@ -1,0 +1,29 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "env": ["NEXT_PUBLIC_URL", "VERCEL_URL", "MONGODB_URI"],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "@cv/web#dev": {
+      "cache": false
+    },
+    "@cv/web#build": {
+      "env": ["NEXT_PUBLIC_URL", "VERCEL_URL", "MONGODB_URI"],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "@cv/web#start": {
+      "cache": false,
+      "outputs": []
+    },
+    "lint": {
+      "outputs": []
+    },
+    "type": {
+      "outputs": []
+    },
+    "type:clean": {
+      "outputs": []
+    }
+  }
+}
