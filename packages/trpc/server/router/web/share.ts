@@ -29,14 +29,14 @@ export const shareRouter = router({
       try {
         // Generar un ID único para el enlace
         const shareId = nanoid(12); // ID corto y único
-        
+
         // Calcular fecha de expiración si se especifica
         let expiresAt = null;
         if (input.expiresInDays && input.expiresInDays > 0) {
           expiresAt = new Date();
           expiresAt.setDate(expiresAt.getDate() + input.expiresInDays);
         }
-        
+
         // Crear el CV compartido
         const sharedResume = new SharedResumeModel({
           shareId,
@@ -47,11 +47,25 @@ export const shareRouter = router({
           viewCount: 0,
           expiresAt
         });
-        
+
         await sharedResume.save();
-        
-        const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000';
-        
+
+        // Detectar la URL base correcta según el entorno
+        let baseUrl = process.env.NEXT_PUBLIC_URL;
+
+        if (!baseUrl) {
+          if (process.env.VERCEL_URL) {
+            // En Vercel, usar la URL automática
+            baseUrl = `https://${process.env.VERCEL_URL}`;
+          } else if (process.env.NODE_ENV === 'production') {
+            // En producción sin VERCEL_URL, usar fallback
+            baseUrl = 'https://TU-DOMINIO-REAL.vercel.app'; // Reemplaza con tu dominio de Vercel
+          } else {
+            // En desarrollo
+            baseUrl = 'http://localhost:3000';
+          }
+        }
+
         return {
           shareId,
           shareUrl: `${baseUrl}/share/${shareId}`,
@@ -74,7 +88,7 @@ export const shareRouter = router({
     .input(z.object({ shareId: z.string() }))
     .query(async ({ ctx, input }) => {
       try {
-        const sharedResume = await SharedResumeModel.findOne({ 
+        const sharedResume = await SharedResumeModel.findOne({
           shareId: input.shareId,
           isPublic: true,
           $or: [
@@ -82,20 +96,20 @@ export const shareRouter = router({
             { expiresAt: { $gt: new Date() } }
           ]
         });
-        
+
         if (!sharedResume) {
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'CV compartido no encontrado o ha expirado'
           });
         }
-        
+
         // Incrementar contador de vistas
         await SharedResumeModel.updateOne(
           { shareId: input.shareId },
           { $inc: { viewCount: 1 } }
         );
-        
+
         return {
           shareId: sharedResume.shareId,
           resumeData: sharedResume.resumeData,
@@ -123,20 +137,20 @@ export const shareRouter = router({
     .mutation(async ({ ctx, input }) => {
       try {
         const { shareId, ...updateData } = input;
-        
+
         const sharedResume = await SharedResumeModel.findOneAndUpdate(
           { shareId },
           updateData,
           { new: true, runValidators: true }
         );
-        
+
         if (!sharedResume) {
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'CV compartido no encontrado'
           });
         }
-        
+
         return {
           shareId: sharedResume.shareId,
           title: sharedResume.title,
@@ -163,14 +177,14 @@ export const shareRouter = router({
     .mutation(async ({ ctx, input }) => {
       try {
         const result = await SharedResumeModel.deleteOne({ shareId: input.shareId });
-        
+
         if (result.deletedCount === 0) {
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'CV compartido no encontrado'
           });
         }
-        
+
         return { success: true, message: 'CV compartido eliminado correctamente' };
       } catch (error) {
         if (error instanceof TRPCError) {
@@ -189,17 +203,17 @@ export const shareRouter = router({
     .input(z.object({ shareId: z.string() }))
     .query(async ({ ctx, input }) => {
       try {
-        const sharedResume = await SharedResumeModel.findOne({ 
-          shareId: input.shareId 
+        const sharedResume = await SharedResumeModel.findOne({
+          shareId: input.shareId
         }).select('shareId title viewCount createdAt updatedAt expiresAt isPublic');
-        
+
         if (!sharedResume) {
           throw new TRPCError({
             code: 'NOT_FOUND',
             message: 'CV compartido no encontrado'
           });
         }
-        
+
         return {
           shareId: sharedResume.shareId,
           title: sharedResume.title,
@@ -218,6 +232,34 @@ export const shareRouter = router({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: `Error fetching stats: ${error}`
+        });
+      }
+    }),
+
+  // Debug: Listar todos los CVs compartidos (solo para desarrollo/debug)
+  debugList: publicProcedure
+    .query(async ({ ctx }) => {
+      try {
+        const sharedResumes = await SharedResumeModel.find({})
+          .select('shareId title description isPublic viewCount createdAt expiresAt')
+          .sort({ createdAt: -1 })
+          .limit(20);
+
+        return sharedResumes.map(resume => ({
+          shareId: resume.shareId,
+          title: resume.title,
+          description: resume.description,
+          isPublic: resume.isPublic,
+          viewCount: resume.viewCount,
+          createdAt: resume.createdAt,
+          expiresAt: resume.expiresAt,
+          isExpired: resume.expiresAt ? new Date() > resume.expiresAt : false
+        }));
+      } catch (error) {
+        console.error('Error fetching shared resumes for debug:', error);
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: `Error fetching shared resumes: ${error}`
         });
       }
     })
